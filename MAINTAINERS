@@ -1814,7 +1814,7 @@ F: tests/functional/ppc64/test_fadump.py
 
 RH850 Machines
 --------------
-rh850-u2c
+rh850-u2a, rh850-u2b, rh850-u2c
 M: Parthiban Nallathambi <parthiban@linumiz.com>
 M: Saravanan Sekar <saravanan@linumiz.com>
 S: Maintained
