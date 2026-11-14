@@ -1,0 +1,84 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Copyright (c) 2026 Linumiz
+
+    .include "macros.inc"
+    .text
+    VECTORS 0
+    RECCLR
+    LI32 11, 0x3f
+    ldsr r11, 14, 2
+    stsr 13, r10, 2
+    CHECK 10, 0x000f0000, 1
+    LI32 11, 0x000f0003
+    ldsr r11, 13, 2
+    stsr 13, r10, 2
+    CHECK 10, 0x000f0002, 2
+    EEICW 100, 0x00000028
+    EEICR 10, 100
+    CHECK 10, 0x00000028, 3
+    EICR 10, 100
+    CHECK 10, 0x0008, 4
+    EICW 100, 0x0005
+    EEICR 10, 100
+    CHECK 10, 0x00000025, 5
+    EEICW 100, 0x00000028
+    EEICW 100, 0x10000028
+    SETPSW 0x02900000
+n1: CHECKR REC_CNT, 1, 10
+    CHECKEI 0x1f0, 0x1064, n1, 0x02900000, 0x02800020, 11
+    CHECKLOG 0, 0x1f0, 0x1064, 16
+    CHECKR REC_LOG + 12, 0, 18
+    stsr 5, r10, 0
+    shr 20, r10
+    CHECK 10, 0x29, 19
+    stsr 10, r10, 2
+    CHECK 10, 0, 20
+    SETPSW 0x02800000
+    EEICW 100, 0x10000028
+    SETPSW 0x02800000
+    CHECKR REC_CNT, 1, 21
+    SETPSW 0x02900000
+n2: CHECKR REC_CNT, 2, 22
+    CHECKEI 0x1f0, 0x1064, n2, 0x02900000, 0x02800020, 23
+    LI32 11, 40
+    ldsr r11, 14, 2
+    di
+    EEICW 100, 0x10000028
+    SETPSW 0x03f00000
+    CHECKR REC_CNT, 2, 30
+    LI32 11, 41
+    ldsr r11, 14, 2
+n3: CHECKR REC_CNT, 3, 31
+    CHECKEI 0x1f0, 0x1064, n3, 0x03f00001, 0x02800021, 32
+    LI32 11, 0x3f
+    ldsr r11, 14, 2
+    EEICW 101, 0x0000003f
+    di
+    EEICW 101, 0x1000003f
+    SETPSW 0x03f00000
+    nop
+    CHECKR REC_CNT, 3, 40
+    EEICW 101, 0x0080003f
+    di
+    EEICW 102, 0x0000001e
+    EEICW 103, 0x00000014
+    EEICW 102, 0x1000001e
+    EEICW 103, 0x10000014
+    SETPSW 0x03f00000
+    nop
+    nop
+    CHECKR REC_CNT, 5, 41
+    CHECKLOG 3, 0x1f0, 0x1067, 42
+    CHECKLOG 4, 0x1f0, 0x1066, 44
+    di
+    LI32 11, 0
+    ldsr r11, 13, 2
+    EEICW 5, 0x00000003
+    EEICW 5, 0x10000003
+    SETPSW 0x00400000
+n4: CHECKR REC_CNT, 6, 50
+    CHECKEI 0x130, 0x1005, n4, 0x00400000, 0x00400020, 51
+    CHECKR REC_LOG + 16 * 5 + 12, 0x8, 56
+    stsr 10, r10, 2
+    CHECK 10, 0, 57
+    PASS

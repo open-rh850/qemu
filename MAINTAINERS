@@ -1822,6 +1822,7 @@ F: docs/system/target-rh850.rst
 F: hw/rh850/
 F: hw/intc/rh850_intc.c
 F: hw/intc/rh850_u2c8_level.c.inc
+F: tests/qtest/rh850-intc-test.c
 F: hw/timer/renesas_ostm.c
 F: hw/char/renesas_rlin3.c
 F: include/hw/rh850/
