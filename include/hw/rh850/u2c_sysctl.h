@@ -45,6 +45,9 @@ struct RH850U2CSysctlState {
     SysBusDevice parent_obj;
 
     MemoryRegion iomem;
+    char *chip;
+    const RH850U2CSysctlReg *regs;
+    int nregs;
     uint32_t val[RH850_U2C_SYSCTL_NREGS];
     uint32_t reskce;
     uint32_t resf;

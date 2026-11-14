@@ -1,12 +1,28 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 # Copyright (c) 2026 Linumiz
 
+config RH850_SYSCTL
+    bool
+
 config RH850_U2C
     bool
     default y
     depends on RH850
     select RH850_INTC
+    select RH850_SYSCTL
     select RENESAS_OSTM
     select RENESAS_RLIN3
     select SIFIVE_TEST
     select UNIMP
+
+config RH850_U2X
+    bool
+    default y
+    depends on RH850
+    select RH850_INTC
+    select RH850_SYSCTL
+    select RENESAS_OSTM
+    select RENESAS_RLIN3
+    select SIFIVE_TEST
+    select UNIMP
+    select SPLIT_IRQ

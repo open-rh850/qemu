@@ -6,11 +6,15 @@
 #include "qemu/osdep.h"
 #include "qemu/log.h"
 #include "qemu/module.h"
+#include "qapi/error.h"
+#include "hw/core/qdev-properties.h"
 #include "system/runstate.h"
 #include "hw/rh850/u2c_sysctl.h"
 #include "migration/vmstate.h"
 
 #include "u2c_sysctl_regs.c.inc"
+#include "u2a_sysctl_regs.c.inc"
+#include "u2b_sysctl_regs.c.inc"
 
 QEMU_BUILD_BUG_ON(ARRAY_SIZE(rh850_u2c_sysctl_regs) !=
                   RH850_U2C_SYSCTL_NREGS);
@@ -33,12 +37,12 @@ static const uint16_t sysctl_key_offset[SC_NKEYS] = {
     [SC_KEY_STBCKCPROT] = 0x1700,
 };
 
-static int sysctl_find(hwaddr addr)
+static int sysctl_find(RH850U2CSysctlState *s, hwaddr addr)
 {
     int i;
 
-    for (i = 0; i < RH850_U2C_SYSCTL_NREGS; i++) {
-        if (rh850_u2c_sysctl_regs[i].offset == addr) {
+    for (i = 0; i < s->nregs; i++) {
+        if (s->regs[i].offset == addr) {
             return i;
         }
     }
@@ -98,13 +102,15 @@ static bool sysctl_reset_write(RH850U2CSysctlState *s, hwaddr addr,
 
 static bool sysctl_unlocked(RH850U2CSysctlState *s, int key)
 {
-    return key == SC_KEY_NONE || s->val[sysctl_find(sysctl_key_offset[key])];
+    int i = sysctl_find(s, sysctl_key_offset[key]);
+
+    return key == SC_KEY_NONE || (i >= 0 && s->val[i]);
 }
 
 static uint64_t sysctl_read(void *opaque, hwaddr addr, unsigned size)
 {
     RH850U2CSysctlState *s = opaque;
-    int i = sysctl_find(addr);
+    int i = sysctl_find(s, addr);
     uint64_t val;
 
     if (size == 4 && sysctl_reset_read(s, addr, &val)) {
@@ -120,14 +126,14 @@ static uint64_t sysctl_read(void *opaque, hwaddr addr, unsigned size)
                       "0x%" HWADDR_PRIx "\n", size, addr);
         return 0;
     }
-    return rh850_u2c_sysctl_regs[i].kind == SC_TRIG ? 0 : s->val[i];
+    return s->regs[i].kind == SC_TRIG ? 0 : s->val[i];
 }
 
 static void sysctl_write(void *opaque, hwaddr addr, uint64_t val,
                          unsigned size)
 {
     RH850U2CSysctlState *s = opaque;
-    int i = sysctl_find(addr);
+    int i = sysctl_find(s, addr);
     const RH850U2CSysctlReg *r;
 
     if (size == 4 && sysctl_reset_write(s, addr, val)) {
@@ -138,7 +144,7 @@ static void sysctl_write(void *opaque, hwaddr addr, uint64_t val,
                       " = 0x%" PRIx64 "\n", addr, val);
         return;
     }
-    r = &rh850_u2c_sysctl_regs[i];
+    r = &s->regs[i];
     if (size != 4) {
         qemu_log_mask(LOG_GUEST_ERROR, "rh850_u2c_sysctl: %u-byte write at "
                       "0x%" HWADDR_PRIx "\n", size, addr);
@@ -191,8 +197,8 @@ static void sysctl_reset_hold(Object *obj, ResetType type)
     RH850U2CSysctlState *s = RH850_U2C_SYSCTL(obj);
     int i;
 
-    for (i = 0; i < RH850_U2C_SYSCTL_NREGS; i++) {
-        s->val[i] = rh850_u2c_sysctl_regs[i].reset;
+    for (i = 0; i < s->nregs; i++) {
+        s->val[i] = s->regs[i].reset;
     }
     s->reskce = 0;
 }
@@ -206,6 +212,28 @@ static void sysctl_init(Object *obj)
     sysbus_init_mmio(SYS_BUS_DEVICE(obj), &s->iomem);
     s->resf = RESF_POR;
 }
+
+static void sysctl_realize(DeviceState *dev, Error **errp)
+{
+    RH850U2CSysctlState *s = RH850_U2C_SYSCTL(dev);
+
+    if (!s->chip || !strcmp(s->chip, "u2c")) {
+        s->regs = rh850_u2c_sysctl_regs;
+        s->nregs = ARRAY_SIZE(rh850_u2c_sysctl_regs);
+    } else if (!strcmp(s->chip, "u2a")) {
+        s->regs = rh850_u2a_sysctl_regs;
+        s->nregs = ARRAY_SIZE(rh850_u2a_sysctl_regs);
+    } else if (!strcmp(s->chip, "u2b")) {
+        s->regs = rh850_u2b_sysctl_regs;
+        s->nregs = ARRAY_SIZE(rh850_u2b_sysctl_regs);
+    } else {
+        error_setg(errp, "chip '%s' is not u2c, u2a or u2b", s->chip);
+    }
+}
+
+static const Property sysctl_properties[] = {
+    DEFINE_PROP_STRING("chip", RH850U2CSysctlState, chip),
+};
 
 static const VMStateDescription vmstate_sysctl = {
     .name = TYPE_RH850_U2C_SYSCTL,
@@ -225,7 +253,9 @@ static void sysctl_class_init(ObjectClass *klass, const void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     ResettableClass *rc = RESETTABLE_CLASS(klass);
 
+    dc->realize = sysctl_realize;
     dc->vmsd = &vmstate_sysctl;
+    device_class_set_props(dc, sysctl_properties);
     rc->phases.hold = sysctl_reset_hold;
 }
 

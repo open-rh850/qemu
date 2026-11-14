@@ -6,7 +6,9 @@
 #include "qemu/osdep.h"
 #include "qemu/log.h"
 #include "qemu/module.h"
+#include "qapi/error.h"
 #include "hw/core/irq.h"
+#include "hw/core/qdev-properties.h"
 #include "hw/intc/rh850_intc.h"
 #include "migration/vmstate.h"
 
@@ -19,7 +21,6 @@
 #define INTC2_IMR       0x1000
 #define INTC2_EIBD      0x2000
 #define INTC2_EEIC      0x4000
-#define INTC2_NIMR      20
 
 #define FENC_FENMIF     0x0
 #define FENC_FENMIC     0x8
@@ -42,7 +43,7 @@ static void rh850_intc_update(RH850INTCState *s)
     int ch, best = -1;
     uint32_t req = 0;
 
-    for (ch = 0; ch < RH850_INTC_NCH; ch++) {
+    for (ch = 0; ch < s->nch; ch++) {
         if (s->eirf[ch] && !s->eimk[ch] && rh850_intc_to_pe0(s, ch) &&
             (best < 0 || s->eip[ch] < s->eip[best])) {
             best = ch;
@@ -102,7 +103,7 @@ static void rh850_intc_ack(void *opaque, int n, int level)
 
     switch (n) {
     case RH850_INTC_ACK_EIINT:
-        if (level >= 0 && level < RH850_INTC_NCH && !s->level[level]) {
+        if (level >= 0 && level < s->nch && !s->level[level]) {
             s->eirf[level] = 0;
         }
         break;
@@ -118,7 +119,7 @@ static void rh850_intc_ack(void *opaque, int n, int level)
 static uint32_t rh850_eic_read(RH850INTCState *s, int ch)
 {
     return s->level[ch] << 15 | s->eirf[ch] << 12 | s->eimk[ch] << 7 |
-           s->eitb[ch] << 6 | s->eiov[ch] << 5 | s->eip[ch];
+           s->eitb[ch] << 6 | s->eiov[ch] << 5 | extract32(s->eip[ch], 0, 4);
 }
 
 static uint32_t rh850_eeic_read(RH850INTCState *s, int ch)
@@ -134,7 +135,7 @@ static void rh850_eic_write(RH850INTCState *s, int ch, int lane, uint8_t v)
         s->eimk[ch] = extract32(v, 7, 1);
         s->eitb[ch] = extract32(v, 6, 1);
         s->eiov[ch] = extract32(v, 5, 1);
-        s->eip[ch] = extract32(v, 0, 4);
+        s->eip[ch] = deposit32(s->eip[ch], 0, 4, v);
     } else if (!s->level[ch]) {
         s->eirf[ch] = extract32(v, 4, 1);
     }
@@ -144,7 +145,7 @@ static void rh850_eeic_write(RH850INTCState *s, int ch, int lane, uint8_t v)
 {
     switch (lane) {
     case 0:
-        s->eip[ch] = extract32(v, 0, 4);
+        s->eip[ch] = extract32(v, 0, s->prio_bits);
         break;
     case 1:
         s->eiov[ch] = extract32(v, 7, 1);
@@ -168,7 +169,7 @@ static uint32_t rh850_imr_read(RH850INTCState *s, int m)
 
     for (k = 0; k < 32; k++) {
         ch = m * 32 + k;
-        v |= (uint32_t)(ch < RH850_INTC_NCH ? s->eimk[ch] : 1) << k;
+        v |= (uint32_t)(ch < s->nch ? s->eimk[ch] : 1) << k;
     }
     return v;
 }
@@ -179,7 +180,7 @@ static void rh850_imr_write(RH850INTCState *s, int m, int lane, uint8_t v)
 
     for (k = 0; k < 8; k++) {
         ch = m * 32 + lane * 8 + k;
-        if (ch < RH850_INTC_NCH && rh850_intc_to_pe0(s, ch)) {
+        if (ch < s->nch && rh850_intc_to_pe0(s, ch)) {
             s->eimk[ch] = extract32(v, k, 1);
         }
     }
@@ -192,10 +193,11 @@ static uint32_t rh850_eibd_wmask(RH850INTCState *s, int ch)
 
 enum { R_NONE, R_EIC, R_EEIC, R_IMR, R_EIBD, R_RO0 };
 
-static int rh850_intc_decode(hwaddr addr, bool intc2, int *idx)
+static int rh850_intc_decode(RH850INTCState *s, hwaddr addr, bool intc2,
+                             int *idx)
 {
     int lo = intc2 ? RH850_INTC1_NCH : 0;
-    int hi = intc2 ? RH850_INTC_NCH : RH850_INTC1_NCH;
+    int hi = intc2 ? s->nch : RH850_INTC1_NCH;
     hwaddr eibd = intc2 ? INTC2_EIBD : INTC1_EIBD;
     hwaddr eeic = intc2 ? INTC2_EEIC : INTC1_EEIC;
 
@@ -218,7 +220,8 @@ static int rh850_intc_decode(hwaddr addr, bool intc2, int *idx)
     if (!intc2 && (addr & ~3) == INTC1_FIBD) {
         return R_RO0;
     }
-    if (intc2 && addr >= INTC2_IMR + 4 && addr < INTC2_IMR + 4 * INTC2_NIMR) {
+    if (intc2 && addr >= INTC2_IMR + 4 &&
+        addr < INTC2_IMR + 4 * DIV_ROUND_UP(s->nch, 32)) {
         *idx = (addr - INTC2_IMR) / 4;
         return R_IMR;
     }
@@ -230,7 +233,7 @@ static uint64_t rh850_intc_read(RH850INTCState *s, hwaddr addr, bool intc2)
     int idx = 0;
     uint32_t v;
 
-    switch (rh850_intc_decode(addr, intc2, &idx)) {
+    switch (rh850_intc_decode(s, addr, intc2, &idx)) {
     case R_EIC:
         return extract32(rh850_eic_read(s, idx), (addr & 1) * 8, 8);
     case R_EEIC:
@@ -259,7 +262,7 @@ static void rh850_intc_write(RH850INTCState *s, hwaddr addr, uint8_t v,
     int lane = addr & 3;
     uint32_t m;
 
-    switch (rh850_intc_decode(addr, intc2, &idx)) {
+    switch (rh850_intc_decode(s, addr, intc2, &idx)) {
     case R_EIC:
         rh850_eic_write(s, idx, addr & 1, v);
         break;
@@ -389,7 +392,7 @@ static void rh850_intc_reset_hold(Object *obj, ResetType type)
     RH850INTCState *s = RH850_INTC(obj);
     int ch;
 
-    for (ch = 0; ch < RH850_INTC_NCH; ch++) {
+    for (ch = 0; ch < s->nch; ch++) {
         s->eirf[ch] = s->level[ch] ? s->in[ch] : 0;
         s->eimk[ch] = 1;
         s->eitb[ch] = 0;
@@ -413,14 +416,7 @@ static void rh850_intc_init(Object *obj)
     RH850INTCState *s = RH850_INTC(obj);
     SysBusDevice *d = SYS_BUS_DEVICE(obj);
     size_t i;
-    int ch;
 
-    for (i = 0; i < ARRAY_SIZE(rh850_u2c8_level); i++) {
-        for (ch = rh850_u2c8_level[i][0]; ch <= rh850_u2c8_level[i][1];
-             ch++) {
-            s->level[ch] = 1;
-        }
-    }
     memory_region_init_io(&s->intc1, obj, &rh850_intc1_ops, s,
                           "rh850-intc1", RH850_INTC1_SIZE);
     memory_region_init_io(&s->intc2, obj, &rh850_intc2_ops, s,
@@ -436,7 +432,6 @@ static void rh850_intc_init(Object *obj)
     for (i = 0; i < RH850_INTC_OUT_NUM; i++) {
         sysbus_init_irq(d, &s->out[i]);
     }
-    qdev_init_gpio_in(DEVICE(obj), rh850_intc_set_irq, RH850_INTC_NCH);
     qdev_init_gpio_in_named(DEVICE(obj), rh850_intc_set_fenmi, "fenmi", 1);
     qdev_init_gpio_in_named(DEVICE(obj), rh850_intc_set_feint, "feint",
                             RH850_INTC_NFEINT);
@@ -444,18 +439,105 @@ static void rh850_intc_init(Object *obj)
                             RH850_INTC_ACK_NUM);
 }
 
+static void rh850_intc_set_level(RH850INTCState *s, uint32_t lo, uint32_t hi,
+                                 Error **errp)
+{
+    if (lo > hi || hi >= s->nch) {
+        error_setg(errp, "level range %" PRIu32 "-%" PRIu32
+                   " is outside 0-%" PRIu32, lo, hi, s->nch - 1);
+        return;
+    }
+    while (lo <= hi) {
+        s->level[lo++] = 1;
+    }
+}
+
+static void rh850_intc_realize(DeviceState *dev, Error **errp)
+{
+    RH850INTCState *s = RH850_INTC(dev);
+    Error *err = NULL;
+    size_t i;
+
+    if (s->nch <= RH850_INTC1_NCH || s->nch > RH850_INTC_MAX_NCH) {
+        error_setg(errp, "num-channels %" PRIu32 " is outside %d-%d",
+                   s->nch, RH850_INTC1_NCH + 1, RH850_INTC_MAX_NCH);
+        return;
+    }
+    if (s->prio_bits != 4 && s->prio_bits != 6) {
+        error_setg(errp, "prio-bits must be 4 or 6");
+        return;
+    }
+    if (s->nlevel_ranges & 1) {
+        error_setg(errp, "level-ranges needs pairs of channels");
+        return;
+    }
+    s->eirf = g_new0(uint8_t, s->nch);
+    s->eimk = g_new0(uint8_t, s->nch);
+    s->eitb = g_new0(uint8_t, s->nch);
+    s->eiov = g_new0(uint8_t, s->nch);
+    s->eip = g_new0(uint8_t, s->nch);
+    s->eibd = g_new0(uint32_t, s->nch);
+    s->in = g_new0(uint8_t, s->nch);
+    s->level = g_new0(uint8_t, s->nch);
+    if (s->nlevel_ranges) {
+        for (i = 0; i < s->nlevel_ranges && !err; i += 2) {
+            rh850_intc_set_level(s, s->level_ranges[i],
+                                 s->level_ranges[i + 1], &err);
+        }
+    } else if (s->u2c_level_table) {
+        for (i = 0; i < ARRAY_SIZE(rh850_u2c8_level) && !err; i++) {
+            rh850_intc_set_level(s, rh850_u2c8_level[i][0],
+                                 rh850_u2c8_level[i][1], &err);
+        }
+    }
+    if (err) {
+        error_propagate(errp, err);
+        return;
+    }
+    qdev_init_gpio_in(dev, rh850_intc_set_irq, s->nch);
+}
+
+static void rh850_intc_unrealize(DeviceState *dev)
+{
+    RH850INTCState *s = RH850_INTC(dev);
+
+    g_free(s->eirf);
+    g_free(s->eimk);
+    g_free(s->eitb);
+    g_free(s->eiov);
+    g_free(s->eip);
+    g_free(s->eibd);
+    g_free(s->in);
+    g_free(s->level);
+}
+
+static const Property rh850_intc_properties[] = {
+    DEFINE_PROP_UINT32("num-channels", RH850INTCState, nch, RH850_INTC_NCH),
+    DEFINE_PROP_UINT8("prio-bits", RH850INTCState, prio_bits, 4),
+    DEFINE_PROP_BOOL("u2c-level-table", RH850INTCState, u2c_level_table, true),
+    DEFINE_PROP_ARRAY("level-ranges", RH850INTCState, nlevel_ranges,
+                      level_ranges, qdev_prop_uint32, uint32_t),
+};
+
 static const VMStateDescription vmstate_rh850_intc = {
     .name = TYPE_RH850_INTC,
     .version_id = 1,
     .minimum_version_id = 1,
     .fields = (const VMStateField[]) {
-        VMSTATE_UINT8_ARRAY(eirf, RH850INTCState, RH850_INTC_NCH),
-        VMSTATE_UINT8_ARRAY(eimk, RH850INTCState, RH850_INTC_NCH),
-        VMSTATE_UINT8_ARRAY(eitb, RH850INTCState, RH850_INTC_NCH),
-        VMSTATE_UINT8_ARRAY(eiov, RH850INTCState, RH850_INTC_NCH),
-        VMSTATE_UINT8_ARRAY(eip, RH850INTCState, RH850_INTC_NCH),
-        VMSTATE_UINT32_ARRAY(eibd, RH850INTCState, RH850_INTC_NCH),
-        VMSTATE_UINT8_ARRAY(in, RH850INTCState, RH850_INTC_NCH),
+        VMSTATE_VARRAY_UINT32(eirf, RH850INTCState, nch, 0,
+                              vmstate_info_uint8, uint8_t),
+        VMSTATE_VARRAY_UINT32(eimk, RH850INTCState, nch, 0,
+                              vmstate_info_uint8, uint8_t),
+        VMSTATE_VARRAY_UINT32(eitb, RH850INTCState, nch, 0,
+                              vmstate_info_uint8, uint8_t),
+        VMSTATE_VARRAY_UINT32(eiov, RH850INTCState, nch, 0,
+                              vmstate_info_uint8, uint8_t),
+        VMSTATE_VARRAY_UINT32(eip, RH850INTCState, nch, 0,
+                              vmstate_info_uint8, uint8_t),
+        VMSTATE_VARRAY_UINT32(eibd, RH850INTCState, nch, 0,
+                              vmstate_info_uint32, uint32_t),
+        VMSTATE_VARRAY_UINT32(in, RH850INTCState, nch, 0,
+                              vmstate_info_uint8, uint8_t),
         VMSTATE_UINT32(fenmif, RH850INTCState),
         VMSTATE_UINT32(fenmi_req, RH850INTCState),
         VMSTATE_UINT32(fenmi_in, RH850INTCState),
@@ -471,7 +553,10 @@ static void rh850_intc_class_init(ObjectClass *klass, const void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     ResettableClass *rc = RESETTABLE_CLASS(klass);
 
+    dc->realize = rh850_intc_realize;
+    dc->unrealize = rh850_intc_unrealize;
     dc->vmsd = &vmstate_rh850_intc;
+    device_class_set_props(dc, rh850_intc_properties);
     rc->phases.hold = rh850_intc_reset_hold;
     rc->phases.exit = rh850_intc_reset_exit;
 }
