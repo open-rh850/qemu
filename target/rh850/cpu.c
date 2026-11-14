@@ -222,6 +222,7 @@ static void rh850_cpu_realize(DeviceState *dev, Error **errp)
         return;
     }
 
+    rh850_cpu_register_gdb_regs(cs);
     qemu_init_vcpu(cs);
     cpu_reset(cs);
 
@@ -397,7 +398,7 @@ static void rh850_cpu_class_init(ObjectClass *klass, const void *data)
     cc->get_pc = rh850_cpu_get_pc;
     cc->gdb_read_register = rh850_cpu_gdb_read_register;
     cc->gdb_write_register = rh850_cpu_gdb_write_register;
-    cc->gdb_num_core_regs = RH850_GDB_NUM_REGS;
+    cc->gdb_core_xml_file = "rh850-core.xml";
 
     cc->sysemu_ops = &rh850_sysemu_ops;
     cc->tcg_ops = &rh850_tcg_ops;

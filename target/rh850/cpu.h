@@ -11,6 +11,7 @@
 
 #include "exec/cpu-common.h"
 #include "exec/cpu-interrupt.h"
+#include "exec/gdbstub.h"
 #include "qemu/cpu-float.h"
 
 #ifdef CONFIG_USER_ONLY
@@ -90,6 +91,7 @@ enum {
     RH850_MPU_ENTRIES = 32,
     RH850_MPU_MPID = 8,
     RH850_GDB_NUM_REGS = 406,
+    RH850_GDB_MAX_SREGS = 64,
 };
 
 typedef struct CPUArchState {
@@ -155,6 +157,10 @@ struct ArchCPU {
     uint32_t pid;
 
     qemu_irq intc_ack[RH850_CPU_NACK];
+
+    GDBFeature gdb_sreg_feature;
+    uint16_t gdb_sreg[RH850_GDB_MAX_SREGS];
+    int gdb_nsreg;
 };
 
 struct RH850CPUClass {
@@ -175,6 +181,7 @@ void rh850_cpu_dump_state(CPUState *cs, FILE *f, int flags);
 void rh850_cpu_do_interrupt(CPUState *cs);
 int rh850_cpu_gdb_read_register(CPUState *cs, GByteArray *mem_buf, int n);
 int rh850_cpu_gdb_write_register(CPUState *cs, uint8_t *mem_buf, int n);
+void rh850_cpu_register_gdb_regs(CPUState *cs);
 bool rh850_cpu_eiint(CPUState *cs);
 uint32_t rh850_cpu_icsr(CPURH850State *env);
 void rh850_cpu_eoi(CPURH850State *env);

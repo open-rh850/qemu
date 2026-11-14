@@ -424,6 +424,7 @@ F: target/rh850/
 F: configs/targets/rh850-softmmu.mak
 F: configs/devices/rh850-softmmu/
 F: tests/tcg/rh850/
+F: gdbstub/gdb-xml/rh850-core.xml
 
 RENESAS RX CPUs
 R: Yoshinori Sato <yoshinori.sato@nifty.com>

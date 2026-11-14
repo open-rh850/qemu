@@ -101,3 +101,54 @@ int rh850_cpu_gdb_write_register(CPUState *cs, uint8_t *mem_buf, int n)
     }
     return 4;
 }
+
+static int rh850_gdb_get_sreg(CPUState *cs, GByteArray *buf, int n)
+{
+    RH850CPU *cpu = RH850_CPU(cs);
+    uint32_t val = 0;
+
+    if (n < cpu->gdb_nsreg) {
+        rh850_sysreg_get(&cpu->env, cpu->gdb_sreg[n] >> 5,
+                         cpu->gdb_sreg[n] & 31, &val);
+    }
+    return gdb_get_reg32(buf, val);
+}
+
+static int rh850_gdb_set_sreg(CPUState *cs, uint8_t *buf, int n)
+{
+    RH850CPU *cpu = RH850_CPU(cs);
+
+    if (n < cpu->gdb_nsreg) {
+        rh850_sysreg_set(&cpu->env, cpu->gdb_sreg[n] >> 5,
+                         cpu->gdb_sreg[n] & 31, ldl_le_p(buf));
+    }
+    return 4;
+}
+
+void rh850_cpu_register_gdb_regs(CPUState *cs)
+{
+    RH850CPU *cpu = RH850_CPU(cs);
+    const RH850CPUDef *def = cpu->def;
+    GDBFeatureBuilder builder;
+    unsigned i;
+
+    gdb_feature_builder_init(&builder, &cpu->gdb_sreg_feature,
+                             "org.gnu.gdb.v850.sreg", "rh850-sreg.xml",
+                             cs->gdb_num_regs);
+    cpu->gdb_nsreg = 0;
+    for (i = 0; i < def->nsysregs; i++) {
+        const RH850SysRegInfo *r = &def->sysregs[i];
+
+        if (r->sel < 8 || r->access == RH850_SR_CU1 ||
+            r->access == RH850_SR_CU1_SV) {
+            continue;
+        }
+        g_assert(cpu->gdb_nsreg < RH850_GDB_MAX_SREGS);
+        gdb_feature_builder_append_reg(&builder, g_ascii_strdown(r->name, -1),
+                                       32, cpu->gdb_nsreg, "uint32", NULL);
+        cpu->gdb_sreg[cpu->gdb_nsreg++] = r->sel << 5 | r->id;
+    }
+    gdb_feature_builder_end(&builder);
+    gdb_register_coprocessor(cs, rh850_gdb_get_sreg, rh850_gdb_set_sreg,
+                             &cpu->gdb_sreg_feature);
+}
