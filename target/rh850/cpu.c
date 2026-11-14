@@ -51,6 +51,9 @@ static TCGTBCPUState rh850_get_tb_cpu_state(CPUState *cs)
     if (RH850_SR(env, RH850_SR_FPEC) & 1) {
         flags |= RH850_TBFLAG_FPIVD;
     }
+    if (FIELD_EX32(env->psw_ctrl, PSW, CU) & 2) {
+        flags |= RH850_TBFLAG_CU1;
+    }
 
     return (TCGTBCPUState){ .pc = env->pc, .flags = flags };
 }
@@ -185,6 +188,7 @@ static void rh850_cpu_reset_hold(Object *obj, ResetType type)
     env->pc = env->sr[RH850_SR_RBASE_SELID][RH850_SR_RBASE_REGID];
     rh850_cpu_unpack_psw(env, RH850_PSW_RESET);
     rh850_fpu_sync(env);
+    rh850_fxu_sync(env);
 }
 
 static ObjectClass *rh850_cpu_class_by_name(const char *cpu_model)
@@ -210,6 +214,10 @@ static void rh850_cpu_realize(DeviceState *dev, Error **errp)
     RH850CPUClass *rcc = RH850_CPU_GET_CLASS(dev);
     Error *local_err = NULL;
 
+    if (cpu->fxu && cpu->def != &rh850_g4mh2_def) {
+        error_setg(errp, "fxu needs the g4mh2 CPU");
+        return;
+    }
     if (cpu->rbase & ~RH850_RBASE_MASK) {
         error_setg(errp, "rbase 0x%08" PRIx32 " is not 512-byte aligned",
                    cpu->rbase);
@@ -305,6 +313,7 @@ void rh850_cpu_dump_state(CPUState *cs, FILE *f, int flags)
 static const Property rh850_cpu_properties[] = {
     DEFINE_PROP_UINT32("rbase", RH850CPU, rbase, 0),
     DEFINE_PROP_UINT32("pid", RH850CPU, pid, 0),
+    DEFINE_PROP_BOOL("fxu", RH850CPU, fxu, false),
 };
 
 static int rh850_cpu_post_load(void *opaque, int version_id)
@@ -314,6 +323,33 @@ static int rh850_cpu_post_load(void *opaque, int version_id)
     rh850_fpu_sync(&cpu->env);
     return 0;
 }
+
+static bool rh850_fxu_needed(void *opaque)
+{
+    RH850CPU *cpu = opaque;
+
+    return cpu->fxu;
+}
+
+static int rh850_fxu_post_load(void *opaque, int version_id)
+{
+    RH850CPU *cpu = opaque;
+
+    rh850_fxu_sync(&cpu->env);
+    return 0;
+}
+
+static const VMStateDescription vmstate_rh850_fxu = {
+    .name = "cpu/fxu",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .needed = rh850_fxu_needed,
+    .post_load = rh850_fxu_post_load,
+    .fields = (const VMStateField[]) {
+        VMSTATE_UINT32_2DARRAY(env.wr, RH850CPU, 32, 4),
+        VMSTATE_END_OF_LIST()
+    },
+};
 
 static const VMStateDescription vmstate_rh850_cpu = {
     .name = "cpu",
@@ -347,6 +383,10 @@ static const VMStateDescription vmstate_rh850_cpu = {
         VMSTATE_UINT32(env.eiint_prio, RH850CPU),
         VMSTATE_UINT32(env.eiint_tb, RH850CPU),
         VMSTATE_END_OF_LIST()
+    },
+    .subsections = (const VMStateDescription * const []) {
+        &vmstate_rh850_fxu,
+        NULL
     },
 };
 

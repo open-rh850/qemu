@@ -13,6 +13,7 @@
 #include "exec/target_page.h"
 #include "insn-len.h"
 #include "sysreg.h"
+#include "fxu.h"
 
 #define HELPER_H "helper.h"
 #include "exec/helper-info.c.inc"
@@ -34,6 +35,8 @@ typedef struct DisasContext {
     MemOp align;
     bool um;
     bool cu0;
+    bool cu1;
+    bool fxu;
     bool fpivd;
     uint32_t insns;
     TCGOp *insn_start;
@@ -47,6 +50,8 @@ enum {
     MEI_DEC = 5,
     MEI_LDL = 7,
     MEI_CAXI = 8,
+    MEI_FXV = 0x1d,
+    MEI_FXVZ = 0x1f,
 };
 
 static TCGv_i32 cpu_gpr[RH850_NUM_GPRS];
@@ -627,6 +632,7 @@ static bool trans_JMP_r(DisasContext *ctx, arg_JMP_r *a)
 #include "trans_branch.c.inc"
 #include "trans_excl.c.inc"
 #include "trans_fpu.c.inc"
+#include "trans_fxu.c.inc"
 
 static bool trans_LDSR(DisasContext *ctx, arg_LDSR *a)
 {
@@ -657,6 +663,8 @@ static void rh850_tr_init_disas_context(DisasContextBase *dcbase, CPUState *cs)
     ctx->align = (ctx->base.tb->flags & RH850_TBFLAG_ALIGN) ? MO_ALIGN : 0;
     ctx->um = FIELD_EX32(ctx->base.tb->flags, PSW, UM);
     ctx->cu0 = ctx->base.tb->flags & RH850_TBFLAG_CU0;
+    ctx->cu1 = ctx->base.tb->flags & RH850_TBFLAG_CU1;
+    ctx->fxu = env_archcpu(ctx->env)->fxu;
     ctx->fpivd = ctx->base.tb->flags & RH850_TBFLAG_FPIVD;
     ctx->insns = env_archcpu(ctx->env)->def->insns;
 }

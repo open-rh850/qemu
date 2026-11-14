@@ -208,6 +208,7 @@ static void rh850_u2x_init(MachineState *machine)
     object_initialize_child(OBJECT(machine), "cpu", &s->cpu,
                             machine->cpu_type);
     qdev_prop_set_uint32(DEVICE(&s->cpu), "pid", chip->pid);
+    qdev_prop_set_bit(DEVICE(&s->cpu), "fxu", chip->fxu);
     qdev_realize(DEVICE(&s->cpu), NULL, &error_fatal);
     qemu_register_resettable(OBJECT(&s->cpu));
     object_initialize_child(OBJECT(machine), "intc", &s->intc,
@@ -355,6 +356,7 @@ static const RH850U2XChip rh850_u2b_chip = {
     .desc = "Renesas RH850/U2B24 (G4MH2, CPU0 only)",
     .sysctl_chip = "u2b",
     .pid = 0x07840f01,
+    .fxu = true,
     .cflash_size = 24 * MiB,
     .cpuperi_size = 0x1c000,
     .cram = {

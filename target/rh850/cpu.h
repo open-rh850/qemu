@@ -42,6 +42,7 @@ FIELD(PSW, UM, 30, 1)
 #define RH850_TBFLAG_ALIGN      (1u << 0)
 #define RH850_TBFLAG_CU0        (1u << 1)
 #define RH850_TBFLAG_FPIVD      (1u << 2)
+#define RH850_TBFLAG_CU1        (1u << 3)
 
 #define RH850_INTERRUPT_EIINT   CPU_INTERRUPT_HARD
 #define RH850_INTERRUPT_FEINT   CPU_INTERRUPT_TGT_EXT_0
@@ -60,6 +61,7 @@ enum {
     RH850_EXCP_TRAP,
     RH850_EXCP_FPE,
     RH850_EXCP_FPI,
+    RH850_EXCP_FXE,
     RH850_EXCP_FENMI,
     RH850_EXCP_FEINT,
     RH850_EXCP_EIINT,
@@ -75,6 +77,7 @@ enum {
     RH850_CAUSE_RIE = 0x60,
     RH850_CAUSE_FPE = 0x71,
     RH850_CAUSE_FPI = 0x72,
+    RH850_CAUSE_FXE = 0x75,
     RH850_CAUSE_UCPOP = 0x80,
     RH850_CAUSE_PIE = 0xa0,
     RH850_CAUSE_MAE = 0xc0,
@@ -122,6 +125,8 @@ typedef struct CPUArchState {
     uint32_t excp_target;
     uint32_t insn_mei;
 
+    uint32_t wr[32][4];
+
     struct {} end_reset_fields;
 
     uint32_t eiint_ch;
@@ -129,6 +134,7 @@ typedef struct CPUArchState {
     uint32_t eiint_tb;
 
     float_status fp_status;
+    float_status fxu_status;
 } CPURH850State;
 
 typedef struct RH850SysRegInfo RH850SysRegInfo;
@@ -155,12 +161,14 @@ struct ArchCPU {
 
     uint32_t rbase;
     uint32_t pid;
+    bool fxu;
 
     qemu_irq intc_ack[RH850_CPU_NACK];
 
     GDBFeature gdb_sreg_feature;
     uint16_t gdb_sreg[RH850_GDB_MAX_SREGS];
     int gdb_nsreg;
+    GDBFeature gdb_fxu_feature;
 };
 
 struct RH850CPUClass {
@@ -193,6 +201,7 @@ enum {
 };
 
 void rh850_fpu_sync(CPURH850State *env);
+void rh850_fxu_sync(CPURH850State *env);
 bool rh850_fpu_flags(CPURH850State *env, uint32_t causes, bool unimpl,
                      uintptr_t retaddr);
 

@@ -73,6 +73,16 @@ uint32_t rh850_sysreg_wmask(CPURH850State *env, unsigned n)
     return rh850_sysreg_find(env, n >> 5, n & 31)->wmask;
 }
 
+uint32_t rh850_psw_wmask(CPURH850State *env)
+{
+    uint32_t mask = rh850_sysreg_wmask(env, RH850_SR_PSWREG);
+
+    if (env_archcpu(env)->fxu) {
+        mask |= R_PSW_CU_MASK & (2u << R_PSW_CU_SHIFT);
+    }
+    return mask;
+}
+
 static void rh850_sysreg_check(CPURH850State *env, const RH850SysRegInfo *r,
                                unsigned id, bool write, uintptr_t ra)
 {
@@ -147,20 +157,26 @@ static uint32_t *rh850_mpu_slot(CPURH850State *env, unsigned id)
 
 static const struct {
     uint16_t n;
+    uint16_t src;
     uint8_t vbit, fbit, len;
 } rh850_fpview_map[] = {
-    { RH850_SR_FPST, 8, 10, 6 },
-    { RH850_SR_FPST, 5, 22, 1 },
-    { RH850_SR_FPST, 0, 0, 5 },
-    { RH850_SR_FPCC, 0, 24, 8 },
-    { RH850_SR_FPCFG, 8, 18, 2 },
-    { RH850_SR_FPCFG, 0, 5, 5 },
+    { RH850_SR_FPST, RH850_SR_FPSR, 8, 10, 6 },
+    { RH850_SR_FPST, RH850_SR_FPSR, 5, 22, 1 },
+    { RH850_SR_FPST, RH850_SR_FPSR, 0, 0, 5 },
+    { RH850_SR_FPCC, RH850_SR_FPSR, 0, 24, 8 },
+    { RH850_SR_FPCFG, RH850_SR_FPSR, 8, 18, 2 },
+    { RH850_SR_FPCFG, RH850_SR_FPSR, 0, 5, 5 },
+    { RH850_SR_FXST, RH850_SR_FXSR, 8, 10, 6 },
+    { RH850_SR_FXST, RH850_SR_FXSR, 5, 22, 1 },
+    { RH850_SR_FXST, RH850_SR_FXSR, 0, 0, 5 },
+    { RH850_SR_FXCFG, RH850_SR_FXSR, 8, 18, 2 },
+    { RH850_SR_FXCFG, RH850_SR_FXSR, 0, 5, 5 },
 };
 
 static bool rh850_fpview(CPURH850State *env, unsigned n, bool write,
                          uint32_t *val)
 {
-    uint32_t *fpsr = &RH850_SR(env, RH850_SR_FPSR);
+    uint32_t *fpsr;
     uint32_t v = 0;
     bool hit = false;
     size_t i;
@@ -173,6 +189,7 @@ static bool rh850_fpview(CPURH850State *env, unsigned n, bool write,
         if (rh850_fpview_map[i].n != n) {
             continue;
         }
+        fpsr = &RH850_SR(env, rh850_fpview_map[i].src);
         hit = true;
         if (write) {
             *fpsr = deposit32(*fpsr, fb, len, extract32(*val, vb, len));
@@ -236,7 +253,7 @@ bool rh850_sysreg_set(CPURH850State *env, unsigned sel, unsigned id,
     }
     if (r->flags & RH850_SRF_PSW) {
         mask = FIELD_EX32(env->psw_ctrl, PSW, UM) ?
-               RH850_PSW_FLAGS_MASK : r->wmask;
+               RH850_PSW_FLAGS_MASK : rh850_psw_wmask(env);
         rh850_cpu_unpack_psw(env, (rh850_cpu_pack_psw(env) & ~mask) |
                                   (val & mask));
         return true;
@@ -256,6 +273,7 @@ bool rh850_sysreg_set(CPURH850State *env, unsigned sel, unsigned id,
     }
     if (rh850_fpview(env, sel << 5 | id, true, &val)) {
         rh850_fpu_sync(env);
+        rh850_fxu_sync(env);
         return true;
     }
     if ((sel << 5 | id) == RH850_SR_FPEC) {
@@ -268,6 +286,9 @@ bool rh850_sysreg_set(CPURH850State *env, unsigned sel, unsigned id,
     env->sr[sel][id] = (env->sr[sel][id] & ~r->wmask) | (val & r->wmask);
     if ((sel << 5 | id) == RH850_SR_FPSR) {
         rh850_fpu_sync(env);
+    }
+    if ((sel << 5 | id) == RH850_SR_FXSR) {
+        rh850_fxu_sync(env);
     }
     if ((sel << 5 | id) == RH850_SR_RBNR && env->sr[sel][id] > 16 &&
         env_archcpu(env)->def->prio_bits == 4) {

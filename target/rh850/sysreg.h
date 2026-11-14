@@ -78,6 +78,12 @@ enum {
     RH850_SR_MPIDX = 5 << 5 | 16,
     RH850_SR_MPLA = 5 << 5 | 20,
     RH850_SR_PMUMCTRL = 11 << 5 | 8,
+    RH850_SR_FXSR = 10 << 5 | 6,
+    RH850_SR_FXST = 10 << 5 | 8,
+    RH850_SR_FXINFO = 10 << 5 | 9,
+    RH850_SR_FXCFG = 10 << 5 | 10,
+    RH850_SR_FXXC = 10 << 5 | 12,
+    RH850_SR_FXXP = 10 << 5 | 13,
 };
 
 #define RH850_SR(env, n)    ((env)->sr[(n) >> 5][(n) & 31])
@@ -95,6 +101,7 @@ extern const RH850CPUDef rh850_g4mh2_def;
 
 void rh850_sysreg_reset(CPURH850State *env);
 uint32_t rh850_sysreg_wmask(CPURH850State *env, unsigned n);
+uint32_t rh850_psw_wmask(CPURH850State *env);
 bool rh850_sysreg_get(CPURH850State *env, unsigned sel, unsigned id,
                       uint32_t *val);
 bool rh850_sysreg_set(CPURH850State *env, unsigned sel, unsigned id,

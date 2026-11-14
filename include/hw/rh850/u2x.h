@@ -55,6 +55,7 @@ typedef struct RH850U2XChip {
     const char *desc;
     const char *sysctl_chip;
     uint32_t pid;
+    bool fxu;
     uint64_t cflash_size;
     uint64_t cpuperi_size;
     RH850U2XRegion cram[RH850_U2X_NCRAM];

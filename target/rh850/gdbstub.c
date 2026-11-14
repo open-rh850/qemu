@@ -125,6 +125,82 @@ static int rh850_gdb_set_sreg(CPUState *cs, uint8_t *buf, int n)
     return 4;
 }
 
+static const struct {
+    uint16_t id;
+    const char *name;
+} rh850_gdb_fxsr[] = {
+    { RH850_SR_FXSR, "fxsr" }, { RH850_SR_FXST, "fxst" },
+    { RH850_SR_FXINFO, "fxinfo" }, { RH850_SR_FXCFG, "fxcfg" },
+    { RH850_SR_FXXC, "fxxc" }, { RH850_SR_FXXP, "fxxp" },
+};
+
+static int rh850_gdb_get_fxu(CPUState *cs, GByteArray *buf, int n)
+{
+    CPURH850State *env = cpu_env(cs);
+    uint32_t *w, val = 0;
+
+    if (n < 32) {
+        w = env->wr[n];
+        return gdb_get_reg128(buf, (uint64_t)w[3] << 32 | w[2],
+                              (uint64_t)w[1] << 32 | w[0]);
+    }
+    if (n < 32 + ARRAY_SIZE(rh850_gdb_fxsr)) {
+        rh850_sysreg_get(env, rh850_gdb_fxsr[n - 32].id >> 5,
+                         rh850_gdb_fxsr[n - 32].id & 31, &val);
+    }
+    return gdb_get_reg32(buf, val);
+}
+
+static int rh850_gdb_set_fxu(CPUState *cs, uint8_t *buf, int n)
+{
+    CPURH850State *env = cpu_env(cs);
+    int i;
+
+    if (n < 32) {
+        for (i = 0; i < 4; i++) {
+            env->wr[n][i] = ldl_le_p(buf + 4 * i);
+        }
+        return 16;
+    }
+    if (n < 32 + ARRAY_SIZE(rh850_gdb_fxsr)) {
+        rh850_sysreg_set(env, rh850_gdb_fxsr[n - 32].id >> 5,
+                         rh850_gdb_fxsr[n - 32].id & 31, ldl_le_p(buf));
+    }
+    return 4;
+}
+
+static void rh850_register_gdb_fxu(CPUState *cs)
+{
+    RH850CPU *cpu = RH850_CPU(cs);
+    GDBFeatureBuilder builder;
+    unsigned i;
+
+    gdb_feature_builder_init(&builder, &cpu->gdb_fxu_feature,
+                             "org.gnu.gdb.v850.fxu", "rh850-fxu.xml",
+                             cs->gdb_num_regs);
+    gdb_feature_builder_append_tag(&builder,
+        "<vector id=\"v4f\" type=\"ieee_single\" count=\"4\"/>");
+    gdb_feature_builder_append_tag(&builder,
+        "<vector id=\"v4u\" type=\"uint32\" count=\"4\"/>");
+    gdb_feature_builder_append_tag(&builder, "<union id=\"fxvec\">");
+    gdb_feature_builder_append_tag(&builder,
+        "<field name=\"f\" type=\"v4f\"/>");
+    gdb_feature_builder_append_tag(&builder,
+        "<field name=\"u\" type=\"v4u\"/>");
+    gdb_feature_builder_append_tag(&builder, "</union>");
+    for (i = 0; i < 32; i++) {
+        gdb_feature_builder_append_reg(&builder, g_strdup_printf("wr%u", i),
+                                       128, i, "fxvec", NULL);
+    }
+    for (i = 0; i < ARRAY_SIZE(rh850_gdb_fxsr); i++) {
+        gdb_feature_builder_append_reg(&builder, rh850_gdb_fxsr[i].name, 32,
+                                       32 + i, "uint32", NULL);
+    }
+    gdb_feature_builder_end(&builder);
+    gdb_register_coprocessor(cs, rh850_gdb_get_fxu, rh850_gdb_set_fxu,
+                             &cpu->gdb_fxu_feature);
+}
+
 void rh850_cpu_register_gdb_regs(CPUState *cs)
 {
     RH850CPU *cpu = RH850_CPU(cs);
@@ -151,4 +227,7 @@ void rh850_cpu_register_gdb_regs(CPUState *cs)
     gdb_feature_builder_end(&builder);
     gdb_register_coprocessor(cs, rh850_gdb_get_sreg, rh850_gdb_set_sreg,
                              &cpu->gdb_sreg_feature);
+    if (cpu->fxu) {
+        rh850_register_gdb_fxu(cs);
+    }
 }

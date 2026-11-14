@@ -1,0 +1,44 @@
+/*
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ * Copyright (c) 2026 Linumiz
+ */
+
+#ifndef RH850_FXU_H
+#define RH850_FXU_H
+
+enum {
+    FXI_ADDF_S4,
+    FXI_ADDRF_S4,
+    FXI_ADDSUBF_S4,
+    FXI_ADDSUBNF_S4,
+    FXI_ADDSUBNXF_S4,
+    FXI_ADDSUBXF_S4,
+    FXI_ADDXF_S4,
+    FXI_DIVF_S4,
+    FXI_FMAF_S4,
+    FXI_FMSF_S4,
+    FXI_FNMAF_S4,
+    FXI_FNMSF_S4,
+    FXI_MAXF_S4,
+    FXI_MAXRF_S4,
+    FXI_MINF_S4,
+    FXI_MINRF_S4,
+    FXI_MULF_S4,
+    FXI_MULRF_S4,
+    FXI_MULXF_S4,
+    FXI_RECIPF_S4,
+    FXI_RSQRTF_S4,
+    FXI_SQRTF_S4,
+    FXI_SUBADDF_S4,
+    FXI_SUBADDNF_S4,
+    FXI_SUBADDNXF_S4,
+    FXI_SUBADDXF_S4,
+    FXI_SUBF_S4,
+    FXI_SUBRF_S4,
+    FXI_SUBXF_S4,
+    FXI_NUM,
+};
+
+enum { FXCVT_F2I, FXCVT_I2F, FXCVT_S2H, FXCVT_H2S };
+
+#endif

@@ -30,6 +30,7 @@ static const struct {
     [RH850_EXCP_TRAP] = { false, false, 0x040, "TRAP" },
     [RH850_EXCP_FPE] = { false, false, 0x070, "FPE" },
     [RH850_EXCP_FPI] = { false, false, 0x070, "FPI" },
+    [RH850_EXCP_FXE] = { false, false, 0x070, "FXE" },
     [RH850_EXCP_FENMI] = { true, true, 0x0e0, "FENMI" },
     [RH850_EXCP_FEINT] = { true, true, 0x0f0, "FEINT" },
     [RH850_EXCP_EIINT] = { false, true, 0, "EIINT" },
@@ -220,7 +221,7 @@ G_NORETURN void HELPER(syscall)(CPURH850State *env, uint32_t vector)
 static void rh850_return(CPURH850State *env, uint32_t pc, uint32_t psw)
 {
     env->pc = pc & ~1u;
-    rh850_cpu_unpack_psw(env, psw & rh850_sysreg_wmask(env, RH850_SR_PSWREG));
+    rh850_cpu_unpack_psw(env, psw & rh850_psw_wmask(env));
     env->ll_valid = 0;
 }
 
