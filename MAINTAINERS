@@ -1829,6 +1829,8 @@ F: include/hw/rh850/
 F: include/hw/intc/rh850_intc.h
 F: include/hw/timer/renesas_ostm.h
 F: include/hw/char/renesas_rlin3.h
+F: README.rh850.md
+F: scripts/rh850-release.sh
 
 RISC-V Machines
 ---------------
