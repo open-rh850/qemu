@@ -35,6 +35,7 @@ typedef struct DisasContext {
     bool um;
     bool cu0;
     bool fpivd;
+    uint32_t insns;
     TCGOp *insn_start;
 } DisasContext;
 
@@ -366,6 +367,32 @@ static bool trans_RESBANK(DisasContext *ctx, arg_RESBANK *a)
     return true;
 }
 
+static bool trans_LDM_MP(DisasContext *ctx, arg_LDM_MP *a)
+{
+    if (!(ctx->insns & RH850_INSN_MP)) {
+        return false;
+    }
+    if (!gen_check_sv(ctx)) {
+        tcg_gen_movi_i32(cpu_pc, ctx->pc);
+        gen_helper_ldm_mp(tcg_env, get_gpr(a->r1), tcg_constant_i32(a->eh),
+                          tcg_constant_i32(a->et));
+    }
+    return true;
+}
+
+static bool trans_STM_MP(DisasContext *ctx, arg_STM_MP *a)
+{
+    if (!(ctx->insns & RH850_INSN_MP)) {
+        return false;
+    }
+    if (!gen_check_sv(ctx)) {
+        tcg_gen_movi_i32(cpu_pc, ctx->pc);
+        gen_helper_stm_mp(tcg_env, get_gpr(a->r1), tcg_constant_i32(a->eh),
+                          tcg_constant_i32(a->et));
+    }
+    return true;
+}
+
 static TCGv_i32 gen_ld_sr(int n)
 {
     TCGv_i32 t = tcg_temp_new_i32();
@@ -631,6 +658,7 @@ static void rh850_tr_init_disas_context(DisasContextBase *dcbase, CPUState *cs)
     ctx->um = FIELD_EX32(ctx->base.tb->flags, PSW, UM);
     ctx->cu0 = ctx->base.tb->flags & RH850_TBFLAG_CU0;
     ctx->fpivd = ctx->base.tb->flags & RH850_TBFLAG_FPIVD;
+    ctx->insns = env_archcpu(ctx->env)->def->insns;
 }
 
 static void rh850_tr_tb_start(DisasContextBase *dcbase, CPUState *cs)

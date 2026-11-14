@@ -142,7 +142,8 @@ static void rh850_cpu_set_irq(void *opaque, int n, int level)
 
     if (n == RH850_INTC_OUT_EIINT && level) {
         cpu->env.eiint_ch = level & RH850_INTC_REQ_CH_MASK;
-        cpu->env.eiint_prio = extract32(level, RH850_INTC_REQ_PRIO, 4);
+        cpu->env.eiint_prio = extract32(level, RH850_INTC_REQ_PRIO,
+                                        cpu->def->prio_bits);
         cpu->env.eiint_tb = extract32(level, RH850_INTC_REQ_TB, 1);
     }
     if (level) {
@@ -158,6 +159,8 @@ static void rh850_cpu_init(Object *obj)
 {
     RH850CPU *cpu = RH850_CPU(obj);
 
+    cpu->def = RH850_CPU_GET_CLASS(obj)->def;
+    cpu->pid = cpu->def->pid;
     qdev_init_gpio_in(DEVICE(obj), rh850_cpu_set_irq, RH850_INTC_OUT_NUM);
     qdev_init_gpio_out_named(DEVICE(obj), cpu->intc_ack, "intc-ack",
                              RH850_INTC_ACK_NUM);
@@ -300,6 +303,7 @@ void rh850_cpu_dump_state(CPUState *cs, FILE *f, int flags)
 
 static const Property rh850_cpu_properties[] = {
     DEFINE_PROP_UINT32("rbase", RH850CPU, rbase, 0),
+    DEFINE_PROP_UINT32("pid", RH850CPU, pid, 0),
 };
 
 static int rh850_cpu_post_load(void *opaque, int version_id)
@@ -410,15 +414,33 @@ static const TypeInfo rh850_cpu_info = {
     .class_init = rh850_cpu_class_init,
 };
 
+static void rh850_g4kh_cpu_class_init(ObjectClass *klass, const void *data)
+{
+    RH850_CPU_CLASS(klass)->def = &rh850_g4kh_def;
+}
+
 static const TypeInfo rh850_g4kh_cpu_info = {
     .name = TYPE_RH850_G4KH_CPU,
     .parent = TYPE_RH850_CPU,
+    .class_init = rh850_g4kh_cpu_class_init,
+};
+
+static void rh850_g4mh2_cpu_class_init(ObjectClass *klass, const void *data)
+{
+    RH850_CPU_CLASS(klass)->def = &rh850_g4mh2_def;
+}
+
+static const TypeInfo rh850_g4mh2_cpu_info = {
+    .name = TYPE_RH850_G4MH2_CPU,
+    .parent = TYPE_RH850_CPU,
+    .class_init = rh850_g4mh2_cpu_class_init,
 };
 
 static void rh850_cpu_register_types(void)
 {
     type_register_static(&rh850_cpu_info);
     type_register_static(&rh850_g4kh_cpu_info);
+    type_register_static(&rh850_g4mh2_cpu_info);
 }
 
 type_init(rh850_cpu_register_types)

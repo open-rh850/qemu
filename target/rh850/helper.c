@@ -88,9 +88,27 @@ void rh850_cpu_do_interrupt(CPUState *cs)
     cs->exception_index = -1;
 }
 
+static bool rh850_epl(CPURH850State *env)
+{
+    return RH850_SR(env, RH850_SR_INTCFG) & RH850_INTCFG_EPL;
+}
+
 static bool rh850_ispr_masked(CPURH850State *env, uint32_t prio)
 {
-    return RH850_SR(env, RH850_SR_ISPR) & ((2u << prio) - 1);
+    if (rh850_epl(env)) {
+        return prio >= FIELD_EX32(env->psw_ctrl, PSW, EIMASK);
+    }
+    return RH850_SR(env, RH850_SR_ISPR) & ((2u << MIN(prio, 15)) - 1);
+}
+
+static bool rh850_bank_full(CPURH850State *env)
+{
+    uint32_t bn = RH850_SR(env, RH850_SR_RBNR);
+
+    if (env_archcpu(env)->def->prio_bits == 4) {
+        return bn > 15;
+    }
+    return bn > extract32(RH850_SR(env, RH850_SR_INTCFG), 16, 6) || bn == 63;
 }
 
 static bool rh850_plmr_masked(CPURH850State *env, uint32_t prio)
@@ -109,6 +127,7 @@ bool rh850_cpu_eiint(CPUState *cs)
 {
     CPURH850State *env = cpu_env(cs);
     uint32_t ch = env->eiint_ch, prio = env->eiint_prio;
+    uint32_t slot = MIN(prio, 15);
     uint32_t psw = rh850_cpu_pack_psw(env);
     uint32_t base, cause = RH850_CAUSE_EIINT + ch;
     uint32_t adr, rbcr0 = RH850_SR(env, RH850_SR_RBCR0);
@@ -121,8 +140,8 @@ bool rh850_cpu_eiint(CPUState *cs)
     base = FIELD_EX32(psw, PSW, EBV) ? RH850_SR(env, RH850_SR_EBASE) :
            RH850_SR(env, RH850_SR_RBASE);
     table = env->eiint_tb && !(base & RH850_BASE_DV);
-    bank = table && (rbcr0 & (1u << prio));
-    if (bank && RH850_SR(env, RH850_SR_RBNR) > 15) {
+    bank = table && (rbcr0 & (1u << slot));
+    if (bank && rh850_bank_full(env)) {
         cs->exception_index = RH850_EXCP_SYSERR;
         env->excp_cause = RH850_CAUSE_SYSERR_BANK;
         rh850_cpu_do_interrupt(cs);
@@ -133,7 +152,7 @@ bool rh850_cpu_eiint(CPUState *cs)
                                            + ch * 4);
     } else {
         env->excp_target = (base & RH850_RBASE_MASK) + 0x100 +
-                           (base & RH850_BASE_RINT ? 0 : prio * 0x10);
+                           (base & RH850_BASE_RINT ? 0 : slot * 0x10);
     }
     if (bank) {
         bool md = rbcr0 & (1u << 16);
@@ -155,10 +174,13 @@ bool rh850_cpu_eiint(CPUState *cs)
     cs->exception_index = RH850_EXCP_EIINT;
     env->excp_cause = cause;
     rh850_cpu_do_interrupt(cs);
-    if (bank && !(RH850_SR(env, RH850_SR_RBCR1) & (1u << prio))) {
+    if (bank && !(RH850_SR(env, RH850_SR_RBCR1) & (1u << slot))) {
         env->psw_ctrl = FIELD_DP32(env->psw_ctrl, PSW, ID, 0);
     }
-    if (!(RH850_SR(env, RH850_SR_INTCFG) & RH850_INTCFG_ISPC)) {
+    if (rh850_epl(env)) {
+        env->psw_ctrl = FIELD_DP32(env->psw_ctrl, PSW, EIMASK, prio);
+    } else if (!(RH850_SR(env, RH850_SR_INTCFG) & RH850_INTCFG_ISPC) &&
+               prio < 16) {
         RH850_SR(env, RH850_SR_ISPR) |= 1u << prio;
     }
     qemu_set_irq(env_archcpu(env)->intc_ack[RH850_INTC_ACK_EIINT], ch);
@@ -198,7 +220,7 @@ G_NORETURN void HELPER(syscall)(CPURH850State *env, uint32_t vector)
 static void rh850_return(CPURH850State *env, uint32_t pc, uint32_t psw)
 {
     env->pc = pc & ~1u;
-    rh850_cpu_unpack_psw(env, psw & rh850_sysreg_wmask(RH850_SR_PSWREG));
+    rh850_cpu_unpack_psw(env, psw & rh850_sysreg_wmask(env, RH850_SR_PSWREG));
     env->ll_valid = 0;
 }
 
@@ -208,7 +230,8 @@ void HELPER(eiret)(CPURH850State *env)
 
     if (!FIELD_EX32(env->psw_ctrl, PSW, EP)) {
         rh850_cpu_eoi(env);
-        if (!(RH850_SR(env, RH850_SR_INTCFG) & RH850_INTCFG_ISPC)) {
+        if (!(RH850_SR(env, RH850_SR_INTCFG) & RH850_INTCFG_ISPC) &&
+            !rh850_epl(env)) {
             *ispr &= *ispr - 1;
         }
     }
@@ -244,7 +267,7 @@ G_NORETURN void HELPER(halt)(CPURH850State *env)
 
 static void rh850_sr_write(CPURH850State *env, unsigned n, uint32_t val)
 {
-    uint32_t mask = rh850_sysreg_wmask(n);
+    uint32_t mask = rh850_sysreg_wmask(env, n);
 
     RH850_SR(env, n) = (RH850_SR(env, n) & ~mask) | (val & mask);
 }

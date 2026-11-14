@@ -3,7 +3,7 @@
  * Copyright (c) 2026 Linumiz
  */
 
-static const RH850SysRegInfo rh850_sysregs[] = {
+static const RH850SysRegInfo rh850_g4kh_sysregs[] = {
     { "EIPC", 0, 0, 0x00000000u, 0xffffffffu, RH850_SR_SV,
       0 },
     { "EIPSW", 0, 1, 0x00000020u, 0x43f780ffu, RH850_SR_SV,
@@ -54,7 +54,7 @@ static const RH850SysRegInfo rh850_sysregs[] = {
       0 },
     { "MCTL", 1, 5, 0x00000002u, 0x00000003u, RH850_SR_SV,
       0 },
-    { "PID", 1, 6, 0x08040701u, 0x00000000u, RH850_SR_SV,
+    { "PID", 1, 6, 0x00000000u, 0x00000000u, RH850_SR_SV,
       RH850_SRF_RO },
     { "SVLOCK", 1, 8, 0x00000000u, 0x00000001u, RH850_SR_SV,
       0 },
@@ -102,7 +102,7 @@ static const RH850SysRegInfo rh850_sysregs[] = {
       0 },
     { "MPM", 5, 0, 0x00000000u, 0x00000003u, RH850_SR_SV,
       RH850_SRF_SVLOCK },
-    { "MPCFG", 5, 2, 0x00010017u, 0x00000000u, RH850_SR_SV,
+    { "MPCFG", 5, 2, 0x00010000u, 0x00000000u, RH850_SR_SV,
       RH850_SRF_RO },
     { "MCA", 5, 8, 0x00000000u, 0xffffffffu, RH850_SR_SV,
       0 },
