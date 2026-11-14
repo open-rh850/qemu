@@ -14,7 +14,7 @@ out=$(cd "$out" && pwd)
 cd "$build"
 "$src/configure" --target-list=rh850-softmmu --prefix=$prefix \
     --without-default-features --disable-docs --disable-tools \
-    --disable-install-blobs --enable-strip
+    --disable-install-blobs --enable-hmp --enable-strip
 make -j"$(nproc)"
 rm -rf stage
 make install DESTDIR="$build/stage"
